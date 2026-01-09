@@ -3,11 +3,27 @@ pragma solidity ^0.8.20;
 
 import { Errors } from "../libraries/Errors.sol";
 
+/*//////////////////////////////////////////////////////////////
+                        AGENT ENUMS & STRUCTS
+//////////////////////////////////////////////////////////////*/
+
+enum Personality {
+    DEGEN,
+    STABLE,
+    BALANCED
+}
+
+struct AgentInfo {
+    address tba;
+    address owner;
+    Personality personality;
+}
+
 /**
  * @title Registry
  * @author AgentiFi
- * @notice Global on-chain registry for protocol components
- * @dev Phase 1: minimal, deterministic, governance-gated
+ * @notice Global on-chain registry for protocol components + Agent discovery
+ * @dev Phase 1–2 compatible, additive refactor only
  */
 contract Registry {
     /*//////////////////////////////////////////////////////////////
@@ -17,6 +33,9 @@ contract Registry {
     event Registered(bytes32 indexed key, address indexed implementation);
     event StatusUpdated(bytes32 indexed key, bool enabled);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
+
+    /// @notice Emitted when a new Agent is registered (Brain indexing optional)
+    event AgentRegistered(address indexed tba, address indexed owner, Personality personality);
 
     /*//////////////////////////////////////////////////////////////
                                STORAGE
@@ -32,6 +51,9 @@ contract Registry {
 
     /// @notice mapping of system keys to registry entries
     mapping(bytes32 => Entry) private entries;
+
+    /// @notice ordered list of all Agents (Brain polling source of truth)
+    AgentInfo[] private _agents;
 
     /*//////////////////////////////////////////////////////////////
                               MODIFIERS
@@ -82,6 +104,59 @@ contract Registry {
         if (entries[key].implementation == address(0)) revert Errors.RegistryNotFound();
         entries[key].enabled = enabled;
         emit StatusUpdated(key, enabled);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        AGENT REGISTRATION (NEW)
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Register a newly created AgentAccount for Brain discovery
+     * @dev Intended to be called by Factory / NFT hook
+     * @param tba ERC-6551 AgentAccount address
+     * @param owner NFT owner
+     * @param personality Selected agent personality
+     */
+    function registerAgent(
+        address tba,
+        address owner,
+        Personality personality
+    ) external onlyGovernance {
+        if (tba == address(0)) revert Errors.InvalidImplementation();
+        if (owner == address(0)) revert Errors.InvalidOwner();
+
+        _agents.push(
+            AgentInfo({
+                tba: tba,
+                owner: owner,
+                personality: personality
+            })
+        );
+
+        emit AgentRegistered(tba, owner, personality);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        AGENT DISCOVERY (BRAIN)
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Total number of registered Agents
+    function agentCount() external view returns (uint256) {
+        return _agents.length;
+    }
+
+    /// @notice Fetch Agent data by index (Brain polling API)
+    function agents(uint256 index)
+        external
+        view
+        returns (
+            address tba,
+            address owner,
+            uint8 personality
+        )
+    {
+        AgentInfo storage a = _agents[index];
+        return (a.tba, a.owner, uint8(a.personality));
     }
 
     /*//////////////////////////////////////////////////////////////
