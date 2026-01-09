@@ -2,20 +2,32 @@
 pragma solidity ^0.8.20;
 
 import { Errors } from "../libraries/Errors.sol";
+import { Registry, Personality } from "./Registry.sol";
 
 /**
  * @title AgentCore
  * @author AgentiFi
- * @notice Core on-chain agent lifecycle management
- * @dev Phase 1: identity, ownership, executors, activation state
+ * @notice Core on-chain agent lifecycle management + Brain registration
+ * @dev Phase 2: identity, ownership, executors, activation state
  */
 contract AgentCore {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    event AgentCreated(uint256 indexed agentId, address indexed owner, address indexed executor);
-    event ExecutorUpdated(uint256 indexed agentId, address indexed oldExecutor, address indexed newExecutor);
+    event AgentCreated(
+        uint256 indexed agentId,
+        address indexed owner,
+        address indexed executor,
+        Personality personality
+    );
+
+    event ExecutorUpdated(
+        uint256 indexed agentId,
+        address indexed oldExecutor,
+        address indexed newExecutor
+    );
+
     event AgentStatusUpdated(uint256 indexed agentId, bool active);
 
     /*//////////////////////////////////////////////////////////////
@@ -26,10 +38,14 @@ contract AgentCore {
         address owner;
         address executor;
         bool active;
+        Personality personality;
     }
 
     uint256 private nextAgentId = 1;
     mapping(uint256 => Agent) private agents;
+
+    /// @notice Global Registry (Brain discovery source of truth)
+    Registry public immutable registry;
 
     /*//////////////////////////////////////////////////////////////
                               MODIFIERS
@@ -49,35 +65,72 @@ contract AgentCore {
     }
 
     /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    constructor(address registryAddress) {
+        if (registryAddress == address(0)) revert Errors.InvalidImplementation();
+        registry = Registry(registryAddress);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                          AGENT CREATION
     //////////////////////////////////////////////////////////////*/
 
-    function createAgent(address owner, address executor) external returns (uint256 agentId) {
+    /**
+     * @notice Create a new Agent and register it for Brain discovery
+     * @param owner Agent owner (NFT holder)
+     * @param executor Initial executor (typically AgentFiTBA)
+     * @param personality Selected Agent personality
+     */
+    function createAgent(
+        address owner,
+        address executor,
+        Personality personality
+    ) external returns (uint256 agentId) {
         if (owner == address(0)) revert Errors.InvalidOwner();
         if (executor == address(0)) revert Errors.InvalidExecutor();
 
         agentId = nextAgentId++;
+
         agents[agentId] = Agent({
             owner: owner,
             executor: executor,
-            active: true
+            active: true,
+            personality: personality
         });
 
-        emit AgentCreated(agentId, owner, executor);
+        /**
+         * Register Agent for Brain discovery
+         * executor == AgentFiTBA address
+         */
+        registry.registerAgent(
+            executor,
+            owner,
+            personality
+        );
+
+        emit AgentCreated(agentId, owner, executor, personality);
     }
 
     /*//////////////////////////////////////////////////////////////
                       AGENT CONFIGURATION
     //////////////////////////////////////////////////////////////*/
 
-    function setExecutor(uint256 agentId, address newExecutor) external onlyAgentOwner(agentId) {
+    function setExecutor(
+        uint256 agentId,
+        address newExecutor
+    ) external onlyAgentOwner(agentId) {
         if (newExecutor == address(0)) revert Errors.InvalidExecutor();
         address old = agents[agentId].executor;
         agents[agentId].executor = newExecutor;
         emit ExecutorUpdated(agentId, old, newExecutor);
     }
 
-    function setActive(uint256 agentId, bool active) external onlyAgentOwner(agentId) {
+    function setActive(
+        uint256 agentId,
+        bool active
+    ) external onlyAgentOwner(agentId) {
         agents[agentId].active = active;
         emit AgentStatusUpdated(agentId, active);
     }
@@ -86,17 +139,27 @@ contract AgentCore {
                          AGENT READS
     //////////////////////////////////////////////////////////////*/
 
-    function getAgent(uint256 agentId)
+    function getAgent(
+        uint256 agentId
+    )
         external
         view
-        returns (address owner, address executor, bool active)
+        returns (
+            address owner,
+            address executor,
+            bool active,
+            Personality personality
+        )
     {
         Agent memory a = agents[agentId];
         if (a.owner == address(0)) revert Errors.InvalidAgent();
-        return (a.owner, a.executor, a.active);
+        return (a.owner, a.executor, a.active, a.personality);
     }
 
-    function canExecute(uint256 agentId, address caller) external view returns (bool) {
+    function canExecute(
+        uint256 agentId,
+        address caller
+    ) external view returns (bool) {
         Agent memory a = agents[agentId];
         if (a.owner == address(0)) return false;
         if (!a.active) return false;
