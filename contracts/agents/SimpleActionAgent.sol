@@ -5,37 +5,32 @@ import "./BaseAgent.sol";
 
 /**
  * @title SimpleActionAgent
- * @notice Minimal concrete agent proving end-to-end execution.
- *         Tracks execution count and emits execution events.
+ * @notice Demonstrates payload decoding and state mutation
  */
 contract SimpleActionAgent is BaseAgent {
-    /// @notice Number of times the agent has been executed
     uint256 public executionCount;
+    uint256 public lastValue;
 
-    /// @notice Emitted on successful agent execution
     event AgentExecuted(
-        address indexed executor,
         uint256 executionCount,
-        bytes payload
+        uint256 decodedValue
     );
 
-    /**
-     * @param _executor Address of the AgentExecutor contract
-     */
     constructor(address _executor) BaseAgent(_executor) {}
 
-    /**
-     * @inheritdoc BaseAgent
-     */
     function execute(bytes calldata data)
         external
         override
         onlyExecutor
-        returns (bool success)
+        returns (bool)
     {
-        executionCount += 1;
+        // Decode payload
+        uint256 value = abi.decode(data, (uint256));
 
-        emit AgentExecuted(msg.sender, executionCount, data);
+        executionCount += 1;
+        lastValue = value;
+
+        emit AgentExecuted(executionCount, value);
 
         return true;
     }

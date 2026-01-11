@@ -1,85 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "../core/AgentExecutor.sol";
+
 /**
- * @notice Interface for AgentExecutor (Phase 3)
- * Using an interface avoids import and symbol resolution issues
+ * @title AutomationController
+ * @notice Registers and triggers agents
  */
-interface IAgentExecutor {
-    function execute(
-        address user,
-        address agent,
-        address target,
-        bytes calldata data
-    ) external;
-}
-
 contract AutomationController {
-    IAgentExecutor public executor;
+    AgentExecutor public executor;
+    mapping(address => bool) public agents;
 
-    struct Automation {
-        address user;
-        address agent;
-        address target;
-        bytes data;
-        uint256 executeAfter;
-        bool executed;
+    constructor() {}
+
+    function setExecutor(address _executor) external {
+        require(address(executor) == address(0), "Executor already set");
+        executor = AgentExecutor(_executor);
     }
 
-    uint256 public automationCount;
-    mapping(uint256 => Automation) public automations;
-
-    event AutomationScheduled(uint256 indexed id, address indexed user);
-    event AutomationExecuted(uint256 indexed id);
-
-    constructor(address _executor) {
-        executor = IAgentExecutor(_executor);
+    function registerAgent(address agent) external {
+        agents[agent] = true;
     }
 
-    /**
-     * @notice Schedule an automation for future execution
-     */
-    function scheduleAutomation(
-        address agent,
-        address target,
-        bytes calldata data,
-        uint256 executeAfter
-    ) external returns (uint256) {
-        require(executeAfter > block.timestamp, "Invalid execution time");
-
-        automationCount++;
-
-        automations[automationCount] = Automation({
-            user: msg.sender,
-            agent: agent,
-            target: target,
-            data: data,
-            executeAfter: executeAfter,
-            executed: false
-        });
-
-        emit AutomationScheduled(automationCount, msg.sender);
-        return automationCount;
-    }
-
-    /**
-     * @notice Execute a scheduled automation once the time has passed
-     */
-    function executeAutomation(uint256 id) external {
-        Automation storage a = automations[id];
-
-        require(!a.executed, "Already executed");
-        require(block.timestamp >= a.executeAfter, "Too early");
-
-        a.executed = true;
-
-        executor.execute(
-            a.user,
-            a.agent,
-            a.target,
-            a.data
-        );
-
-        emit AutomationExecuted(id);
+    function executeAgent(address agent, bytes calldata data) external {
+        require(agents[agent], "Agent not registered");
+        executor.execute(agent, data);
     }
 }

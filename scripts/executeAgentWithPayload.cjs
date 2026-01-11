@@ -1,0 +1,5 @@
+const CONTROLLER_ADDRESS =
+  "0xa790C7a49ACB972cd7e12d2a3940E711D6CbE5f1";
+
+const AGENT_ADDRESS =
+  "0xa5c1217e5c971fc819fd75e3e9c66d5028cf5480"; // lowercase is safest
